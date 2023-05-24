@@ -1,2 +1,2 @@
-# EBMs_Jarzynski 
- code for Efficient Training of Energy-Based Models Using Jarzynski Equality
+# EBMs_Jarzynski
+ Code for the paper Efficient Training of Energy-Based Models Using Jarzynski Equality

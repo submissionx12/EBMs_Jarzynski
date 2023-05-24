@@ -1,0 +1,237 @@
+%-------------------------------------------------
+\documentclass[a4paper,11pt]{extarticle}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+%-------------------------------------------------
+\usepackage{amsthm,amsmath,amsfonts,amssymb, verbatim}
+\usepackage{array,enumerate,float}
+\newtheorem{theorem}{Theorem}
+%\usepackage[left=1 cm,right=1cm,top=1cm,bottom=2cm]{geometry}
+
+
+%-------------------------------------------------
+\newcommand{\topt}{\theta_{\mathrm{opt}}}
+\newcommand{\tcd}{\theta_{\mathrm{CD}}}
+\newcommand{\tpcd}{\theta_{\mathrm{PCD}}}
+\newcommand{\tjar}{\theta_{\mathrm{Jar}}}
+
+
+\title{Limit of sparse digraph}
+\author{}
+\date{}
+
+
+\begin{document}
+\section*{Tracking the Cross Entropy in PCD with a NN student and a GMM teacher}
+
+Setting: 
+\begin{itemize}
+\item The teacher is a GMM $\rho_*$, density is fully known
+\item The training data are $\{x_*^i\}_{i=1}^n \sim \rho_*$. 
+\item The walkers at step $t$ are $\{x^i_t\}_{i=1}^n$. 
+\item We initialize them at the data, that is $x^i_0 = x^i_*$. 
+\item The model $U_\theta$ is a Neural network parametrized by $\theta$, with unknown normalization constant 
+$$Z_\theta = \int e^{-U_\theta(x)}dx.$$
+\item The parameters of the starting model, $\theta_0$, are chosen so that $U_{\theta_0}(x) = |x|^2/2$, a Standard Gaussian. That's what Davide already does. 
+\end{itemize}
+
+The Vanilla PCD algorithm proceeds as follows: 
+
+\begin{enumerate}
+    \item update parameters : $\theta_{t+1} = \theta_t + \langle \partial_\theta U_{\theta_t} \rangle_{x_t} - \langle \partial_\theta U_{\theta_t}\rangle_*$ where $\langle \rangle_{x_t}$ is an average wrt the walkers distribution, 
+    \item move walkers $x^i_{t+1} - x^i_t = $ (Langevin update)
+\end{enumerate}
+now we add a third step: 
+\begin{enumerate}
+    \item[3.] update weigths $w_t^i$ with Jarczynski, so that at each $t$, 
+    \begin{equation}\frac{\sum \varphi(x_t^i)w^i_t}{\sum w^i_t} \approx \int \varphi(x)\frac{e^{-U_{\theta_t}(x)}}{Z_{\theta_t}}dx\end{equation}
+    that is, the weigths keep track of the mismatch between the distribution of the walkers and the model distribution. To do this the initial weigths $w_0^i$ must be chosen so that 
+    \begin{equation}\frac{1}{\sum w_0^i}\sum w_0^i \delta_{x_0^i} \approx \rho_{\theta_0}\end{equation}
+    and we only have to take $w_0^i = \rho_{\theta_0}(x_0^i) / \rho_*(x_0^i)$. 
+\end{enumerate}
+
+
+
+Then at each time $t$ we can track the Cross-Entropy between the model and the target as needed: 
+\begin{align}\int \log \rho_{\theta_t}(x) \rho_*(x)dx &= -\int (U_{\theta_t}(x) + Z_{\theta_t})\rho_*(x)dx \\
+    &= - \frac{1}{n}\sum_{i=1}^n U_{\theta_t}(x^i_*) - \sum_{i=1}^{N}w^i_t.
+\end{align}
+
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\PP}{\mathbb{P}}
+
+\section{Appendix}
+
+In this appendix, we explore why the vanilla PCD algorithm can lead to mode collapse when learning multimodal distributions, while the Jarczynski-corrected PCD does not. To show this in the simplest setting, we work with a Gaussian mixture model with only two known and try to learn the relative weigths of these modes. 
+
+\subsection{Continuous-time gradient descent with infinitely many walkers}
+
+If $g_a(x)$ denotes the Gaussian density with mean $a$, our target density is
+\begin{equation}\label{app:1:rhostar}
+    \rho_*(x) = \frac{g_a(x) + e^{-z_*}g_b(x)}{1+e^{-z_*}}.
+\end{equation}
+Here $z_*$ parametrizes the relative weight of the second mode relatively to the first. The proportion of modes in both modes is indeed 
+\begin{align}p_*^a = \frac{1}{1 + e^{-z_*}},&& p^b_* = \frac{e^{-z_*}}{1+e^{-z_*}}.\end{align}
+Our point is that when both modes are separated by very low-density regions, learning $z_*$ with PCD or CD is unfeasible. From now on, we will suppose that the modes are separated in the following sense: 
+\begin{equation}\label{app:sepmodes}
+    |a-b|>10, 
+\end{equation}
+which will be enough for our needs. 
+
+The parametrization for our model potential $U_z$ has the same form as  \eqref{app:1:rhostar}: 
+\begin{equation}
+    U_z(x) = -\log\left(e^{-\frac{|x-a|^2}{2}} + e^{-z_* - \frac{|x-b|^2}{2}}\right) 
+\end{equation}
+and the associated Free energy is 
+\begin{equation}
+    F_z = \log(1 + e^{-z}) + \frac{d}{2}\log(2\pi).
+\end{equation}
+As explained in XXX, the gradient ascent on the log-likelihood $\int U_z(x)\rho_*(x)dx$ leads to the following continuous-time dynamics:  
+\begin{equation}\label{app:dyn}
+    \dot{z}(t) = \E_{z(t)}[\partial_z U_{z(t)}] - \E_*[\partial_z U_{z(t)}].
+\end{equation}
+
+For future reference, we note that 
+    
+\begin{align}
+    \partial_z U_z(x) = \frac{e^{-z}e^{ - \frac{|x-b|^2}{2}}}{U_z(x)}. 
+\end{align}
+The main idea of the approximations to come is that $\partial_z U_z(x)$ is almost zero when $x$ is far from $b$ (and in particular, close to $a$), and is almost 1 if $x$ is close to $b$. 
+
+
+
+\subsubsection*{Jarczynski-corrected Persistent Contrastive Divergence}
+
+In continuous time and with an infinite number of walkers, the Jarczynski-correction described in XXX exactly realizes \eqref{app:dyn}. However, although seemingly simple since only involving very simple mixtures of Gaussians, the expectations in \eqref{app:1:rhostar} do not have a simple closed-form that would allow for an exact solution. That being said, when $a$ and $b$ are sufficiently well-separated, the system has reasonnable and accurate approximations. First, we recall that if $X\sim \mathcal{N}(0,1)$, then $\mathbf{P}(|X|>t)\leqslant e^{-t^2/2}/t$, hence
+\begin{equation}
+    \label{app:deviation_gaussian}
+    \PP(|X|>4)\leqslant e^{-4^2/2}/4 \approx 0.0001. 
+\end{equation}
+
+
+\begin{theorem}\label{app:lemm:ineq}For any $v\in\mathbb{R}$, \begin{itemize}
+\item if $x\in I_a$, then $\partial_z U_v(x)\leqslant e^{-v-10}$; 
+\item if $x\in I_b$, then $|\partial_z U_v(x) - 1| \leqslant e^{v-10}$.  
+\end{itemize}
+\end{theorem}
+
+\begin{theorem}Under \eqref{app:sepmodes}, we have  
+    \begin{equation}\label{app:approx}
+        \left|\E_u [\left. \partial_z U_z \right|_{z=v}] - \frac{e^{-u}}{1 + e^{-u}}\right| \leqslant \varepsilon
+    \end{equation}
+    where $|\varepsilon|\leqslant 0.0002 + 2e^{-10}\cosh(v)$. 
+\end{theorem}
+
+\begin{proof}
+    The integral is exactly given by 
+    \begin{align}\label{app:pr:1}
+        \frac{1}{1+e^{-u}}\mathbb{E}\left[\frac{e^{-v-(X_a-b)^2 / 2}}{U_v(X_a)}\right] + \frac{e^{-u}}{1+e^{-u}}\mathbb{E}\left[\frac{e^{-v-(X_b-b)^2 / 2}}{U_v(X_b)}\right]
+    \end{align}
+    where $X_a, X_b$ denote two Gaussian random variables with respective means $a, b$. By \eqref{app:deviation_gaussian}, $X_a$ and $X_b$ are respectively contained in $I_a=[a-4, a+4]$ and $I_b=[b-4, b+4]$ with probability greater than $.999$. Note that if $|x-a|<4$ then $|x-b|>6$ and vice-versa. Let us examine the first term of \eqref{app:pr:1}. The fraction inside the expectation is always smaller than 1, hence 
+    $$\partial_z U_v(x) \leqslant \mathbf{1}_{x\notin I_a} + \mathbf{1}_{x\in I_a}\frac{e^{-v - 6^2/2}}{e^{-4^2/2}} \leqslant \mathbf{1}_{x \notin I_a} + e^{-v - 10}. $$
+    Consequently, the first integral is smaller than $0.0001 + e^{-v-10}$. By a similar analysis, the second expectation is equal to 
+    $$ 1 - \E\left[\frac{e^{-(X_b-a)^2/ 2}}{U_v(X_b)} \right]$$
+    and the expectation here is smaller than $ 0.0001 + e^{v - 10}$. Gathering the bounds yields the result. 
+\end{proof}
+
+In particular, \eqref{app:dyn} be approximated by 
+\begin{equation}
+    \dot{z}(t) \approx \frac{e^{-z(t)}}{1 + e^{-z(t)}} - \frac{e^{-z_*}}{1 + e^{-z_*}}, 
+\end{equation}
+a system with only one fixed point at $z(t)=z_*$, the true solution. 
+
+\subsubsection*{Mode collapse in Persistent Contrastive Divergence}
+Now let us analyze in a similar fashion the dynamics under the Persistent CD without reweighting. Here, \eqref{app:dyn} is replaced by 
+\begin{equation}\label{app:dynPCD} \dot{z}(t) = \E_{t}[\partial_z U_{z(t)}] - \E_*[\partial_z U_{z(t)}], \end{equation}
+where $\PP_t, \E_t$ denote probabilities and expectations under the law of the process $X_t$ solving 
+$$dX_t = -\nabla U_{z(t)}(X_t)dt + \sqrt{2}dW_t.$$ Formally, the density $\rho_t$ of $X_t$ satisfies a Fokker-Planck equation 
+$$ \partial_t \rho_t(x) = \Delta \rho_t(x) - \nabla\cdot(\rho_t(x)\nabla U_{z(t)(x)})$$
+which, in full generality, is hard to solve exactly, and exact expressions for the first term of \eqref{app:dynPCD} is intractable. However, depending on whether $X_0$ is close to $a$ or $b$, it can be well approximated by an Ornstein-Uhlenbeck process, hence $\rho_t$ can itself be approximated by a Gaussian mixture. 
+
+\begin{theorem}Suppose that for all $t$, $z(t) \in [-C,C]$. Then, for some $\delta < e^{-10}$, one has $d_{\mathrm{KL}}(\mathbb{P}_{0}|\PP_t) \leqslant \delta e^{2C} t$. In other words, $\rho_t$ is approximately constant, up to reasonnable time scales. 
+\end{theorem}
+
+\begin{proof}
+    $X_0$ is drawn from $\rho_0$, a Gaussian mixture; the probability of it being sampled from a Gaussian with mean $a$ is $e^{-z(0)}/(1 + e^{-z(0)})$. We will work conditionnally on this event $\mathcal{E}_a$. On this event, $X_0 \sim \mathcal{N}(a,1)$ and we will note $\rho_t^a$ the density of $X_0$ conditionnally on $\mathcal{E}^a$. We set $V(x) = |x-a|^2/2$ so that $\nabla V(x) = (x-a)$ and we consider the following Ornstein-Uhlenbeck process: 
+    $$dY_t = -\nabla V(Y_t)dt + \sqrt{2}dW_t, \quad Y_0 \sim X_0$$
+    whose density will be denoted $\tilde{\rho}^a_t$. Classical bounds on the divergence between $\rho_t$ and $\tilde{\rho}_t$ show that, for example, 
+    $$d_{\text{KL}}(\tilde{\rho}_t^a | \rho_t^a) \leqslant \frac{1}{4}\int_0^t \E\left[|\nabla U_{z(s)}(Y_s) - \nabla V(Y_s)|^2\right]ds.$$
+    Since $Y_t$ is nothing but an Ornstein-Uhlenbeck at equilibrium, $Y_t \sim \mathcal{N}(a,1)$ for each $t$. The integral inside the integral is a Gaussian integral and can be shown to be small: 
+    \begin{equation}\label{app:lemm:FK}
+        \E\left[|\nabla U_{z(s)}(Y_s) - \nabla V(Y_s)|^2\right] \leqslant 0.0001^2 + 400e^{-2z(t)-20}.
+    \end{equation}
+    Consequently, 
+    $$d_{\text{KL}}(\tilde{\rho}_t^a | \rho_t^a) \leqslant t\frac{0.0001^2}{4} + 100e^{-20}\int_0^t e^{-2z(s)}ds .$$ 
+    If $z(t)$ stays in a compact set, say $[-K,K]$, the overall bound remains very small, thus proving that $\tilde{\rho}_t$ and $\rho_t$ are very close. Similarly, $\rho_t^b$, the density of $X_t$ conditionnally on $X_0$ being sampled from the second well with mode $b$, is close to $\mathcal{N}(b,1)$, and overall, $\rho_t$ is close to a mixture of two Gaussians with modes $a,b$, and the probability of belonging to the first mode is the probability of $X_0$ belonging to the first mode, that is, $e^{-z(0)}/(1 + e^{-z(0)})$. 
+\end{proof}
+
+
+\begin{proof}[Proof of \eqref{app:lemm:FK}]We recall that 
+    \begin{align}\nabla U_z(x) = \frac{(x-a)e^{-|x-a|^2/2} + (x-b)e^{-|x-b|^2/2 - z}}{U_z(x)}.\end{align}
+    Lemma \ref{app:lemm:ineq} with a little adaptation shows that if $x\in I_a$, then 
+    $$|\nabla U_v(x) - (x-a)| \leqslant 20\varepsilon$$
+    with $\varepsilon \leqslant e^{-v-10}$. Consequently, 
+    \begin{align}
+        \E\left[|\nabla U_{z(s)}(Y_s) - \nabla V(Y_s)|^2\right] &\leqslant \PP(Y_t \notin I_a) + 20e^{-v-10}\\ &\leqslant 0.0001^2 + 400e^{-2v-20}. 
+    \end{align}
+\end{proof}
+
+As a consequence, the first term of \eqref{app:dynPCD} can be approximated by $\E_{z(0)}[\partial_z U_{z(t)}]$, which in turn can be approximated by $e^{-z(0)}/(1 + e^{-z(0)})$ thanks to \eqref{app:approx}. Overall, \eqref{app:dynPCD} is a perturbation of the system
+$$ \dot{z}(t)\approx \frac{e^{-z(0)}}{1 + e^{-z(0)}} - \frac{e^{-z_*}}{1 + e^{-z_*}}.$$
+Since the RHS, noted $\gamma$, no longer depends on $z(t)$, this system leads to a constant drift of $z$, that is $z(t) \approx e^{\gamma t}$ where $\gamma$, leading to the observed mode collapse phenomenon where the weight of the first mode, $(1 + e^{-z(t)})^{-1} \approx (1 + e^{e^{\gamma t}})^{-1}$, goes to either 0 or 1 depending on the sign of $\gamma$. 
+
+\subsection{Walkers estimation}
+
+Empirically, both sides of \eqref{app:dyn} are estimated; the second term using a finite number of training data $\{x_*^i\}$, and the first one using a finite number of walkers $\{x_t^i\}$, either weighted or not. The GD dynamics is thus 
+\begin{equation}\label{app:dyn:emp}
+    \dot{z}(t) = \frac{\sum_{i=1}^n w_t^i \partial_z U_{z(t)}(x_t^i)}{\sum_{i=1}^n w_t^i} - \frac{\sum_{i=1}^n  \partial_z U_{z(t)}(x_*^i)}{n}. 
+\end{equation}
+
+\subsubsection*{Jarczynski-corrected PCD leads to the correct estimation of the empirical weigths}
+The continuous-time dynamics of the walkers and weigths in our method is given by 
+\begin{align}\label{app:systemj}
+    &dx_t^i = -\nabla U_{z(t)}(x_t^i)dt + \sqrt{2}dW_t \\
+    &dw_t^i = -\partial_z U_{z(t)}(x_t^i)\dot{z}(t)w_t^i dt.
+\end{align}
+Let $\hat{n}^a_*$ be the number of training data that landed in $I_a$ and $\hat{p}_* = \hat{n}^a_*/n$ their proportion, and similarly $\hat{q}_*$ the proportion that landed in $I_b$, and $r=1-\hat{p}_* - \hat{q}_*$. 
+By elementary concentration results, the remainder $1 - \hat{p}_* - \hat{q}_*$ can be neglected: with high probability it is smaller than, eg, $0.0001$. 
+
+Using \eqref{app:lemm:ineq}, the second term in \eqref{app:dyn:emp} is approximated by
+$$- \hat{q}_* =: \frac{-e^{-\hat{z}_*}}{1 + e^{-\hat{z}_*}}.  $$
+Similarly, let $\hat{p}(t)$ be the proportion of walkers $x_t^i$ in $I_a$, and $\hat{q}(t)$ in $I_b$. The first term in \eqref{app:dyn:emp} is well approximated by 
+$$- \frac{\sum_{i : x_t^i \in I_b }w_t^i}{\sum w_t^i} = - \hat{q}(t).$$
+
+The second equation in \eqref{app:systemj} entails
+$$w^i_t = \exp\left( -\int_0^t \partial_z U_{z(s)}(x_s^i)\dot{z}(s)ds\right).$$
+Now let us use Lemma \ref{app:lemm:ineq}: if $x_t^i \in I_a$, then $\partial_z U_{z(t)}(x_t^i) \approx 0$. Conversely, if $x_t^i\in I_b$, then $\partial_z U_{z(t)}(x_t^i)\approx 1$. Consequently, 
+\begin{align}
+    &w_t^i \approx \exp\left(- \int_0^t 0ds \right) = 1 &&\text{ if }x_t^i \in I_a, \\
+    &w_t^i \approx \exp\left(- \int_0^t \dot{z}(s)ds \right) = \exp\left(-z(t)\right) &&\text{ if }x_t^i \in I_b. 
+\end{align}
+We are left with approximating $\hat{q}(t)$; but fortunately, the dynamics \eqref{app:systemj} leaves approximately constant the number of walkers in both modes; the argument here is the same as for XXX. More precisely, the approximation 
+\begin{theorem}
+    $\hat{p}(t)\approx \hat{p}(0)$ 
+\end{theorem}
+is reasonnable. As a consequence, 
+\begin{align}
+    \hat{q}(t)  \approx \frac{\hat{q}(t)e^{-z(t)}}{\hat{p}(t) + e^{-z(t)}\hat{q}(t)}.
+\end{align}
+
+Overall, we obtain
+\begin{align}
+    \dot{z}(t) \approx \hat{q}_* - \hat{q}(t) =  \frac{e^{-\hat{z}_*}}{1 + e^{-\hat{z}_*}} - \frac{e^{-\hat{z}(t)}}{1 - e^{-\hat{z}(t)}} .
+\end{align}
+This system has a unique stable point at $z(t)=\hat{z}_*$, thus leading to a correct estimation of the empirical weigth of the first mode relatively to the second. 
+
+\subsection*{Mode collapse in PCD}
+In the PCD dynamics, the walkers still evolve under the Langevin dynamics in \eqref{app:systemj}, but the weigths are frozen at $w_t^i = 1$. Consequently, \eqref{app:dyn:emp} becomes
+\begin{equation}\label{app:dyn:emp:pcd}
+    \dot{z}(t) =   \frac{\sum_{i=1}^n \partial_z U_{z(t)}(x_t^i)}{n} - \frac{\sum_{i=1}^n  \partial_z U_{z(t)}(x_*^i)}{n}. 
+\end{equation}
+Keeping the same notation as in the last subsection, the second term is still approximated by $-\hat{q}_*$, but this time the first term is instead approximated by 
+$$-\frac{\hat{n}^b_t}{n} \approx -\frac{\hat{n}^b_0}{n} = - \hat{q}(0). $$
+Consequently, \eqref{app:dyn:emp:pcd} is a perturbation of the system
+$$\dot{z}(t) \approx \hat{q}_* - \hat{q}(t) =  \frac{e^{-\hat{z}_*}}{1 + e^{-\hat{z}_*}} - \frac{e^{-\hat{z}(0)}}{1 - e^{-\hat{z}(0)}}=:\hat{\gamma},$$
+which no longer depends on $t$ and thus leads to $z(t) = e^{\hat{\gamma}t}$ and to mode collapse. 
+\end{document}
